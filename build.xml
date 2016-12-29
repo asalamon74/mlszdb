@@ -3,13 +3,21 @@
   <property name="src" location="src"/>
   <property name="build" location="build"/>
   <property name="dist" location="dist"/>
+  <property name="lib" location="lib"/>
 
   <target name="init">
     <mkdir dir="${build}"/>
   </target>
 
   <target name="compile" depends="init">
-    <javac includeantruntime="false" srcdir="${src}" destdir="${build}"/>
+    <javac includeantruntime="false" srcdir="${src}"
+           destdir="${build}">
+      <classpath>
+        <fileset dir="${lib}">
+          <include name="**/*.jar" />
+        </fileset>
+      </classpath>
+    </javac>
   </target>
 
   <target name="dist" depends="compile">
@@ -24,7 +32,16 @@
   </target>
 
   <target name="run">
-    <java jar="${dist}/MlszDb.jar" fork="true"/>
+    <java fork="true" classname="info.melda.sala.mlszdb.MlszDb">
+      <classpath>
+        <fileset dir="${lib}">
+          <include name="**/*.jar" />
+        </fileset>
+        <fileset dir="${dist}">
+          <include name="MlszDb.jar"/>
+        </fileset>
+      </classpath>
+    </java>
   </target>
 
   <target name="clean">
