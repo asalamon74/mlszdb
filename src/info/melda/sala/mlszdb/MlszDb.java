@@ -22,29 +22,29 @@ public class MlszDb {
     private int SZERVEZET_MLSZ = 24;
     private static final String URL_PREFIX = "http://www.mlsz.hu/wp-content/plugins/mlszDatabank/interfaces/";
 
-    private static void createDb() {
-        Connection connection = null;
-        try {
-            connection = DriverManager.getConnection("jdbc:sqlite:mlszdb.db");
-            Statement statement = connection.createStatement();
-            statement.setQueryTimeout(30);  // set timeout to 30 sec.
-            
-            statement.executeUpdate("drop table if exists evad");
-            statement.executeUpdate("create table evad (evadkod integer, evadnev string, akutalis integer)"); // akutalis: typo in json
-            statement.executeUpdate("drop table if exists verseny");
-            statement.executeUpdate("create table verseny (id integer,verseny_id integer, nev string, szerv_id integer, szezon_id integer,kieg_igazolas_tipus_kod integer, szint integer, bajnkupa integer, szakag integer, spkod integer,ferfi_noi integer, jvszekod integer, jv_kikuld integer, versenyrendszer_id integer, korosztaly integer,web_nev string, lathato integer, nupi integer, szam_kezdo integer, szam_csere integer,ervenyes integer,aktford integer)");
-        } catch (SQLException e) {       
-            System.err.println(e);
-        } finally {
-            try {
-                if(connection != null) {
-                    connection.close();
-                }
-            }
-            catch(SQLException e) {
-                System.err.println(e);
-            }
+    private static String getDbTypeByClass(Class c) {
+        if( c == Integer.class ) {
+            return "integer";
+        } else if( c == String.class ) {
+            return "string";
+        } else {
+            return null;
         }
+    }
+
+    private static void createTableByJson(Connection conn, String tableName, JSONObject obj) throws SQLException {
+        Iterator<String> i=obj.keys();
+        String sql="create table "+tableName+"(";
+        while ( i.hasNext() ) {
+            String key=i.next();
+            sql += key+" "+getDbTypeByClass(obj.get(key).getClass())+",";
+        }
+        sql = sql.substring(0, sql.length()-1)+")";
+        Statement statement = conn.createStatement();
+        statement.setQueryTimeout(30);
+            
+        statement.executeUpdate("drop table if exists "+tableName);
+        statement.executeUpdate(sql);
     }
 
     private static Connection readDb() {
@@ -80,8 +80,13 @@ public class MlszDb {
         JSONObject json = new JSONObject(jsonStr);
         JSONArray evad = json.getJSONArray("evad");
         Iterator<Object> iterator = evad.iterator();
+        boolean first=true;
         while (iterator.hasNext()) {
             JSONObject o = (JSONObject)iterator.next();
+            if( first ) {
+                createTableByJson(conn, "evad", o);
+                first=false;
+            }
             PreparedStatement statement = conn.prepareStatement("insert into evad (evadkod, evadnev, akutalis) values(?,?,?)");
             statement.setInt(1, o.getInt("evadkod"));
             statement.setString(2, o.getString("evadnev"));
@@ -90,10 +95,15 @@ public class MlszDb {
         }
 
         JSONArray verseny = json.getJSONArray("verseny");
-        System.out.println(verseny);
+        //        System.out.println(verseny);
         iterator = verseny.iterator();
+        first=true;
         while (iterator.hasNext()) {
             JSONObject o = (JSONObject)iterator.next();
+            if( first ) {
+                createTableByJson(conn, "verseny", o);
+                first=false;
+            }
             PreparedStatement statement = conn.prepareStatement("insert into verseny (id,verseny_id, nev, szerv_id, szezon_id,kieg_igazolas_tipus_kod, szint, bajnkupa, szakag, spkod,ferfi_noi, jvszekod, jv_kikuld, versenyrendszer_id, korosztaly,web_nev, lathato, nupi, szam_kezdo, szam_csere,ervenyes,aktford) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
             statement.setInt(1, o.getInt("id"));
             statement.setInt(2, o.getInt("verseny_id"));
@@ -118,12 +128,12 @@ public class MlszDb {
             statement.setInt(21, o.getInt("ervenyes"));
             statement.setInt(22, o.getInt("aktford"));
             statement.executeUpdate();
-            System.out.println(o);
+            //            System.out.println(o);
         }
     }
 
     public static void main(String args[]) {
-        createDb();
+        //        createDb();
         Connection conn = readDb();
         try {
             jsonParse(readURL(URL_PREFIX+"getDataToFilter.php"), conn);
