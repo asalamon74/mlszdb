@@ -19,6 +19,8 @@ import org.json.JSONArray;
 
 public class MlszDb {
 
+    private int SZERVEZET_MLSZ = 24;
+
     private static void createDb() {
         Connection connection = null;
         try {
