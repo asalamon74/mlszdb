@@ -22,7 +22,7 @@ import org.json.JSONArray;
 
 public class MlszDb {
 
-    private int SZERVEZET_MLSZ = 24;
+    private static final int SZERVEZET_MLSZ = 24;
     private static final String URL_PREFIX = "http://www.mlsz.hu/wp-content/plugins/mlszDatabank/interfaces/";
     private static Set<String> tablesCreated = new HashSet<String>();
 
@@ -158,10 +158,17 @@ public class MlszDb {
         }                
     }
 
-    private static void jsonParse(String jsonStr, Connection conn) throws SQLException {
-        JSONObject json = new JSONObject(jsonStr);
-        JSONArray evad = json.getJSONArray("evad");
-        Iterator<Object> iterator = evad.iterator();
+    private static void getDataToFilter(Connection conn, int verseny,int evad) throws SQLException {
+        String url = URL_PREFIX+"getDataToFilter.php";
+        if( verseny == -1 ) {
+            url += "?verseny="+verseny+"&szezon_id="+evad+"&evad="+evad;
+        } else {
+            url += "?verseny="+verseny+"&szervezet="+SZERVEZET_MLSZ+"&szezon_id="+evad+"&evad="+evad;        
+        }
+        String content = readURL(url);
+        JSONObject json = new JSONObject(content);
+        JSONArray jEvad = json.getJSONArray("evad");
+        Iterator<Object> iterator = jEvad.iterator();
         boolean first=true;
         while (iterator.hasNext()) {
             JSONObject o = (JSONObject)iterator.next();
@@ -176,9 +183,9 @@ public class MlszDb {
             statement.executeUpdate();
         }
 
-        JSONArray verseny = json.getJSONArray("verseny");
-        //        System.out.println(verseny);
-        iterator = verseny.iterator();
+        JSONArray jVerseny = json.getJSONArray("verseny");
+        //        System.out.println(jVerseny);
+        iterator = jVerseny.iterator();
         first=true;
         while (iterator.hasNext()) {
             JSONObject o = (JSONObject)iterator.next();
@@ -219,7 +226,7 @@ public class MlszDb {
         try {
             dropTable(conn, "evad");
             dropTable(conn, "verseny");
-            jsonParse(readURL(URL_PREFIX+"getDataToFilter.php"), conn);
+            getDataToFilter( conn, -1, -1);
             dropTable(conn, "merkozesek");
             int aktFord = getAktFord(conn, 14967);
             for( int i=1; i<=aktFord; ++i ) {
