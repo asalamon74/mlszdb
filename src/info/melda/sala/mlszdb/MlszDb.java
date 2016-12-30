@@ -27,6 +27,7 @@ public class MlszDb {
     private static final int SZERVEZET_MLSZ = 24;
     private static final String URL_PREFIX = "http://www.mlsz.hu/wp-content/plugins/mlszDatabank/interfaces/";
     private static Set<String> tablesCreated = new HashSet<String>();
+    private static Connection connection;
 
     private static String getDbTypeByClass(Object o) {
         Class c = o.getClass();
@@ -50,14 +51,14 @@ public class MlszDb {
         }
     }
 
-    private static void dropTable(Connection conn, String tableName) throws SQLException {
-        Statement statement = conn.createStatement();
+    private static void dropTable(String tableName) throws SQLException {
+        Statement statement = connection.createStatement();
         statement.setQueryTimeout(30);
             
         statement.executeUpdate("drop table if exists "+tableName);
     }        
 
-    private static void createTableByJson(Connection conn, String tableName, JSONObject obj) throws SQLException {
+    private static void createTableByJson(String tableName, JSONObject obj) throws SQLException {
         if( !tablesCreated.contains(tableName)) {
             Iterator<String> i=obj.keys();
             String sql="create table "+tableName+"(";
@@ -70,7 +71,7 @@ public class MlszDb {
                 }
             }
             sql = sql.substring(0, sql.length()-1)+")";
-            Statement statement = conn.createStatement();
+            Statement statement = connection.createStatement();
             statement.setQueryTimeout(30);
             
             //   statement.executeUpdate("drop table if exists "+tableName);
@@ -80,13 +81,13 @@ public class MlszDb {
     }
 
     private static Connection readDb() {
-        Connection connection = null;
+        Connection ret = null;
         try {
-            connection = DriverManager.getConnection("jdbc:sqlite:mlszdb.db");
+            ret = DriverManager.getConnection("jdbc:sqlite:mlszdb.db");
         } catch(SQLException e) {
             System.err.println(e);
         }
-        return connection;
+        return ret;
     }
 
     private static String readURL(String urlName) {
@@ -108,9 +109,9 @@ public class MlszDb {
         }
     }
 
-    private static int getAktFord(Connection conn, int verseny) {
+    private static int getAktFord(int verseny) {
         try {
-            PreparedStatement statement = conn.prepareStatement("select aktford from verseny where verseny_id=? order by szezon_id desc");
+            PreparedStatement statement = connection.prepareStatement("select aktford from verseny where verseny_id=? order by szezon_id desc");
             statement.setInt(1, verseny);
             ResultSet rs = statement.executeQuery();
             if( rs.next() ) {
@@ -123,10 +124,10 @@ public class MlszDb {
         }      
     }
 
-    private static List<Integer> getEvadkods(Connection conn) {
+    private static List<Integer> getEvadkods() {
         List<Integer> ret = new ArrayList<>();
         try {
-            PreparedStatement statement = conn.prepareStatement("select evadkod from evad");
+            PreparedStatement statement = connection.prepareStatement("select evadkod from evad");
             ResultSet rs = statement.executeQuery();
             while( rs.next() ) {
                 ret.add(rs.getInt(1));
@@ -143,7 +144,7 @@ public class MlszDb {
         return o.isNull("key") ? null : o.getString(key);
     }
 
-    private static void getDataToMatches(Connection conn, int verseny, int fordulo,int evad) throws SQLException {
+    private static void getDataToMatches(int verseny, int fordulo,int evad) throws SQLException {
         String content = readURL(URL_PREFIX+"getDataToMatches.php?verseny="+verseny+"&fordulo="+fordulo+"&csapat=&evad="+evad);
         JSONObject json = new JSONObject(content);
         JSONArray list = json.getJSONArray("list");
@@ -151,9 +152,9 @@ public class MlszDb {
         while (iterator.hasNext()) {
             JSONObject o = (JSONObject)iterator.next();
             //            System.out.println("o:"+o);
-            createTableByJson(conn, "merkozesek", o);
+            createTableByJson("merkozesek", o);
 
-            PreparedStatement statement = conn.prepareStatement("insert into merkozesek (hegkod, lejatszva, vegkod, hcsapat_id, vcsapat_id, merk_id, stadion_nev, stadion_varos, merk_ido, datumteny, hgol, vgol, hazai_csapat, vendeg_csapat, hazai_logo_url, vendeg_logo_url) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+            PreparedStatement statement = connection.prepareStatement("insert into merkozesek (hegkod, lejatszva, vegkod, hcsapat_id, vcsapat_id, merk_id, stadion_nev, stadion_varos, merk_ido, datumteny, hgol, vgol, hazai_csapat, vendeg_csapat, hazai_logo_url, vendeg_logo_url) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
             //            statement.setInt(1, o.getInt("hbuntgol"));
             //            statement.setInt(2, o.getInt("vbuntgol"));
             statement.setInt(1, o.getInt("hegkod"));
@@ -176,7 +177,7 @@ public class MlszDb {
         }                
     }
 
-    private static void getDataToFilter(Connection conn, int verseny,int evad) throws SQLException {
+    private static void getDataToFilter(int verseny,int evad) throws SQLException {
         String url = URL_PREFIX+"getDataToFilter.php";
         if( evad == -1 ) {
             url += "?verseny="+verseny+"&szezon_id="+evad+"&evad="+evad;
@@ -191,8 +192,8 @@ public class MlszDb {
             iterator = jEvad.iterator();
             while (iterator.hasNext()) {
                 JSONObject o = (JSONObject)iterator.next();
-                createTableByJson(conn, "evad", o);
-                PreparedStatement statement = conn.prepareStatement("insert into evad (evadkod, evadnev, akutalis) values(?,?,?)");
+                createTableByJson("evad", o);
+                PreparedStatement statement = connection.prepareStatement("insert into evad (evadkod, evadnev, akutalis) values(?,?,?)");
                 statement.setInt(1, o.getInt("evadkod"));
                 statement.setString(2, o.getString("evadnev"));
                 statement.setInt(3, o.getInt("akutalis"));
@@ -204,8 +205,8 @@ public class MlszDb {
             iterator = jVerseny.iterator();
             while (iterator.hasNext()) {
                 JSONObject o = (JSONObject)iterator.next();
-                createTableByJson(conn, "verseny", o);
-                PreparedStatement statement = conn.prepareStatement("insert into verseny (id,verseny_id, nev, szerv_id, szezon_id,kieg_igazolas_tipus_kod, szint, bajnkupa, szakag, spkod,ferfi_noi, jvszekod, jv_kikuld, versenyrendszer_id, korosztaly,web_nev, lathato, nupi, szam_kezdo, szam_csere,ervenyes,aktford) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                createTableByJson("verseny", o);
+                PreparedStatement statement = connection.prepareStatement("insert into verseny (id,verseny_id, nev, szerv_id, szezon_id,kieg_igazolas_tipus_kod, szint, bajnkupa, szakag, spkod,ferfi_noi, jvszekod, jv_kikuld, versenyrendszer_id, korosztaly,web_nev, lathato, nupi, szam_kezdo, szam_csere,ervenyes,aktford) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
                 statement.setInt(1, o.getInt("id"));
                 statement.setInt(2, o.getInt("verseny_id"));
                 statement.setString(3, o.getString("nev"));
@@ -235,19 +236,19 @@ public class MlszDb {
     }
 
     public static void main(String args[]) {
-        Connection conn = readDb();
+        connection = readDb();
         try {
-            dropTable(conn, "evad");
-            dropTable(conn, "verseny");
-            getDataToFilter( conn, -1, -1);
-            for( Integer evadkod : getEvadkods(conn) ) {
+            dropTable("evad");
+            dropTable("verseny");
+            getDataToFilter( -1, -1);
+            for( Integer evadkod : getEvadkods() ) {
                 System.out.println("evadkod:"+evadkod);
-                getDataToFilter( conn, -1, evadkod);                
+                getDataToFilter( -1, evadkod);                
             }
-            dropTable(conn, "merkozesek");
-            int aktFord = getAktFord(conn, 14967);
+            dropTable("merkozesek");
+            int aktFord = getAktFord(14967);
             for( int i=1; i<=aktFord; ++i ) {
-                getDataToMatches(conn,14967,i,15);
+                getDataToMatches(14967,i,15);
             }
         } catch( SQLException e ) {
            System.err.println(e);
