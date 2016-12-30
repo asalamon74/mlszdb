@@ -11,6 +11,8 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
 import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.Statement;
@@ -58,7 +60,7 @@ public class MlszDb {
         statement.executeUpdate("drop table if exists "+tableName);
     }        
 
-    private static void createTableByJson(String tableName, JSONObject obj) throws SQLException {
+    private static void createTableByJson(String tableName, JSONObject obj, Map<String,String> extraFields) throws SQLException {
         if( !tablesCreated.contains(tableName)) {
             Iterator<String> i=obj.keys();
             String sql="create table "+tableName+"(";
@@ -70,6 +72,11 @@ public class MlszDb {
                     sql += key+" "+dbType+",";
                 }
             }
+            if( extraFields != null ) {
+                for( String key : extraFields.keySet() ) {
+                    sql += key+" "+extraFields.get(key)+",";
+                }
+            }
             sql = sql.substring(0, sql.length()-1)+")";
             Statement statement = connection.createStatement();
             statement.setQueryTimeout(30);
@@ -78,6 +85,10 @@ public class MlszDb {
             statement.executeUpdate(sql);
             tablesCreated.add(tableName);
         }
+    }
+
+    private static void createTableByJson(String tableName, JSONObject obj) throws SQLException {
+        createTableByJson(tableName, obj, null);
     }
 
     private static Connection readDb() {
@@ -149,12 +160,16 @@ public class MlszDb {
         JSONObject json = new JSONObject(content);
         JSONArray list = json.getJSONArray("list");
         Iterator<Object> iterator = list.iterator();
+        Map<String, String> fks = new HashMap<>();
+        fks.put("verseny", "integer");
+        fks.put("fordulo", "integer");
+        fks.put("evad", "integer");
         while (iterator.hasNext()) {
             JSONObject o = (JSONObject)iterator.next();
             //            System.out.println("o:"+o);
-            createTableByJson("merkozesek", o);
+            createTableByJson("merkozesek", o, fks);
 
-            PreparedStatement statement = connection.prepareStatement("insert into merkozesek (hegkod, lejatszva, vegkod, hcsapat_id, vcsapat_id, merk_id, stadion_nev, stadion_varos, merk_ido, datumteny, hgol, vgol, hazai_csapat, vendeg_csapat, hazai_logo_url, vendeg_logo_url) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+            PreparedStatement statement = connection.prepareStatement("insert into merkozesek (hegkod, lejatszva, vegkod, hcsapat_id, vcsapat_id, merk_id, stadion_nev, stadion_varos, merk_ido, datumteny, hgol, vgol, hazai_csapat, vendeg_csapat, hazai_logo_url, vendeg_logo_url, verseny, fordulo, evad) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
             //            statement.setInt(1, o.getInt("hbuntgol"));
             //            statement.setInt(2, o.getInt("vbuntgol"));
             statement.setInt(1, o.getInt("hegkod"));
@@ -173,6 +188,9 @@ public class MlszDb {
             statement.setString(14, o.getString("vendeg_csapat"));
             statement.setString(15, getString(o, "hazai_logo_url"));
             statement.setString(16, getString(o, "vendeg_logo_url"));
+            statement.setInt(17, verseny);
+            statement.setInt(18, fordulo);
+            statement.setInt(19, evad);
             statement.executeUpdate();
         }                
     }
