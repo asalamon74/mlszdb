@@ -9,6 +9,8 @@ import java.io.BufferedReader;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.List;
+import java.util.ArrayList;
 import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.Statement;
@@ -108,7 +110,7 @@ public class MlszDb {
 
     private static int getAktFord(Connection conn, int verseny) {
         try {
-            PreparedStatement statement = conn.prepareStatement("select aktford from verseny where verseny_id=?");
+            PreparedStatement statement = conn.prepareStatement("select aktford from verseny where verseny_id=? order by szezon_id desc");
             statement.setInt(1, verseny);
             ResultSet rs = statement.executeQuery();
             if( rs.next() ) {
@@ -119,6 +121,22 @@ public class MlszDb {
             System.err.println(e);
             return 0;
         }      
+    }
+
+    private static List<Integer> getEvadkods(Connection conn) {
+        List<Integer> ret = new ArrayList<>();
+        try {
+            PreparedStatement statement = conn.prepareStatement("select evadkod from evad");
+            ResultSet rs = statement.executeQuery();
+            while( rs.next() ) {
+                ret.add(rs.getInt(1));
+            }
+            return ret;
+        } catch( SQLException e) {
+            System.err.println(e);
+            return null;
+        }      
+
     }
 
     private static String getString(JSONObject o, String key) {
@@ -160,64 +178,59 @@ public class MlszDb {
 
     private static void getDataToFilter(Connection conn, int verseny,int evad) throws SQLException {
         String url = URL_PREFIX+"getDataToFilter.php";
-        if( verseny == -1 ) {
+        if( evad == -1 ) {
             url += "?verseny="+verseny+"&szezon_id="+evad+"&evad="+evad;
         } else {
             url += "?verseny="+verseny+"&szervezet="+SZERVEZET_MLSZ+"&szezon_id="+evad+"&evad="+evad;        
         }
         String content = readURL(url);
         JSONObject json = new JSONObject(content);
-        JSONArray jEvad = json.getJSONArray("evad");
-        Iterator<Object> iterator = jEvad.iterator();
-        boolean first=true;
-        while (iterator.hasNext()) {
-            JSONObject o = (JSONObject)iterator.next();
-            if( first ) {
+        Iterator<Object> iterator;
+        if( evad == -1 ) {
+            JSONArray jEvad = json.getJSONArray("evad");
+            iterator = jEvad.iterator();
+            while (iterator.hasNext()) {
+                JSONObject o = (JSONObject)iterator.next();
                 createTableByJson(conn, "evad", o);
-                first=false;
+                PreparedStatement statement = conn.prepareStatement("insert into evad (evadkod, evadnev, akutalis) values(?,?,?)");
+                statement.setInt(1, o.getInt("evadkod"));
+                statement.setString(2, o.getString("evadnev"));
+                statement.setInt(3, o.getInt("akutalis"));
+                statement.executeUpdate();
             }
-            PreparedStatement statement = conn.prepareStatement("insert into evad (evadkod, evadnev, akutalis) values(?,?,?)");
-            statement.setInt(1, o.getInt("evadkod"));
-            statement.setString(2, o.getString("evadnev"));
-            statement.setInt(3, o.getInt("akutalis"));
-            statement.executeUpdate();
-        }
-
-        JSONArray jVerseny = json.getJSONArray("verseny");
-        //        System.out.println(jVerseny);
-        iterator = jVerseny.iterator();
-        first=true;
-        while (iterator.hasNext()) {
-            JSONObject o = (JSONObject)iterator.next();
-            if( first ) {
+        } else {
+            JSONArray jVerseny = json.getJSONArray("verseny");
+            //        System.out.println(jVerseny);
+            iterator = jVerseny.iterator();
+            while (iterator.hasNext()) {
+                JSONObject o = (JSONObject)iterator.next();
                 createTableByJson(conn, "verseny", o);
-                first=false;
+                PreparedStatement statement = conn.prepareStatement("insert into verseny (id,verseny_id, nev, szerv_id, szezon_id,kieg_igazolas_tipus_kod, szint, bajnkupa, szakag, spkod,ferfi_noi, jvszekod, jv_kikuld, versenyrendszer_id, korosztaly,web_nev, lathato, nupi, szam_kezdo, szam_csere,ervenyes,aktford) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                statement.setInt(1, o.getInt("id"));
+                statement.setInt(2, o.getInt("verseny_id"));
+                statement.setString(3, o.getString("nev"));
+                statement.setInt(4, o.getInt("szerv_id"));
+                statement.setInt(5, o.getInt("szezon_id"));
+                statement.setInt(6, o.getInt("kieg_igazolas_tipus_kod"));
+                statement.setInt(7, o.getInt("szint"));
+                statement.setInt(8, o.getInt("bajnkupa"));
+                statement.setInt(9, o.getInt("szakag"));
+                statement.setInt(10, o.getInt("spkod"));
+                statement.setInt(11, o.getInt("ferfi_noi"));
+                statement.setInt(12, o.getInt("jvszekod"));
+                statement.setInt(13, o.getInt("jv_kikuld"));
+                statement.setInt(14, o.getInt("versenyrendszer_id"));
+                statement.setInt(15, o.getInt("korosztaly"));
+                statement.setString(16, o.getString("web_nev"));
+                statement.setInt(17, o.getInt("lathato"));
+                statement.setInt(18, o.getInt("nupi"));
+                statement.setInt(19, o.getInt("szam_kezdo"));
+                statement.setInt(20, o.getInt("szam_csere"));
+                statement.setInt(21, o.getInt("ervenyes"));
+                statement.setInt(22, o.getInt("aktford"));
+                statement.executeUpdate();
+                //            System.out.println(o);
             }
-            PreparedStatement statement = conn.prepareStatement("insert into verseny (id,verseny_id, nev, szerv_id, szezon_id,kieg_igazolas_tipus_kod, szint, bajnkupa, szakag, spkod,ferfi_noi, jvszekod, jv_kikuld, versenyrendszer_id, korosztaly,web_nev, lathato, nupi, szam_kezdo, szam_csere,ervenyes,aktford) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-            statement.setInt(1, o.getInt("id"));
-            statement.setInt(2, o.getInt("verseny_id"));
-            statement.setString(3, o.getString("nev"));
-            statement.setInt(4, o.getInt("szerv_id"));
-            statement.setInt(5, o.getInt("szezon_id"));
-            statement.setInt(6, o.getInt("kieg_igazolas_tipus_kod"));
-            statement.setInt(7, o.getInt("szint"));
-            statement.setInt(8, o.getInt("bajnkupa"));
-            statement.setInt(9, o.getInt("szakag"));
-            statement.setInt(10, o.getInt("spkod"));
-            statement.setInt(11, o.getInt("ferfi_noi"));
-            statement.setInt(12, o.getInt("jvszekod"));
-            statement.setInt(13, o.getInt("jv_kikuld"));
-            statement.setInt(14, o.getInt("versenyrendszer_id"));
-            statement.setInt(15, o.getInt("korosztaly"));
-            statement.setString(16, o.getString("web_nev"));
-            statement.setInt(17, o.getInt("lathato"));
-            statement.setInt(18, o.getInt("nupi"));
-            statement.setInt(19, o.getInt("szam_kezdo"));
-            statement.setInt(20, o.getInt("szam_csere"));
-            statement.setInt(21, o.getInt("ervenyes"));
-            statement.setInt(22, o.getInt("aktford"));
-            statement.executeUpdate();
-            //            System.out.println(o);
         }
     }
 
@@ -227,6 +240,10 @@ public class MlszDb {
             dropTable(conn, "evad");
             dropTable(conn, "verseny");
             getDataToFilter( conn, -1, -1);
+            for( Integer evadkod : getEvadkods(conn) ) {
+                System.out.println("evadkod:"+evadkod);
+                getDataToFilter( conn, -1, evadkod);                
+            }
             dropTable(conn, "merkozesek");
             int aktFord = getAktFord(conn, 14967);
             for( int i=1; i<=aktFord; ++i ) {
