@@ -26,14 +26,64 @@ import org.json.JSONArray;
 
 public class MlszDb {
 
+    private static class MlszField {
+        private String fieldName;
+        private String fieldType;
+        private int fieldIndex;
+        
+        public MlszField(String fieldName, String fieldType, int fieldIndex) {
+            this.fieldName = fieldName;
+            this.fieldType = fieldType;
+            this.fieldIndex = fieldIndex;
+        }
+
+        public String getDbFieldType() {
+            return "date".equals(fieldType) ? "text" : fieldType;
+        }
+
+        public Object getValue(JSONObject obj) {
+            switch( fieldType ) {
+            case "date":
+                return ((JSONObject)obj.get(fieldName)).getString("date");
+            default:
+                return obj.get(fieldName);
+            }
+        }
+    }
+
+    private static class MlszTable {
+
+        private String tableName;
+        private Map<String, MlszField> fields;
+
+        public MlszTable(String tableName, Map<String,MlszField> fields) {
+            this.tableName = tableName;
+            this.fields = fields;
+        }
+
+        public MlszField getMlszField(String fieldName) {
+            return fields.get(fieldName);
+        }
+
+        public String getCreateSql() {
+            String sql="create table "+tableName+"(";
+            for( String key : fields.keySet() ) {
+                sql += key+" "+fields.get(key).getDbFieldType()+",";
+            }
+            sql = sql.substring(0, sql.length()-1)+")";
+            return sql;
+        }
+
+    }
+
     private static final int SZERVEZET_MLSZ = 24;
     private static final String URL_PREFIX = "http://www.mlsz.hu/wp-content/plugins/mlszDatabank/interfaces/";
-    private static Set<String> tablesCreated = new HashSet<String>();
+    private static Map<String,MlszTable> tablesCreated = new HashMap<>();
     private static Connection connection;
 
     private static String getDbTypeByClass(Object o) {
         Class c = o.getClass();
-        if( c == Integer.class ) {
+        if( c == Integer.class || c == Boolean.class) {
             return "integer";
         } else if( c == String.class ) {
             return "text";
@@ -44,11 +94,14 @@ public class MlszDb {
             // todo: check other records
             return "text";
         } else if( c == JSONObject.class ) {
-            // dates 
-            // TODO: better checking
-            return "text";
+            JSONObject jo = (JSONObject)o;
+            if( jo.has("date") && jo.has("timezone") ) {
+                return "date";
+            } else {
+                return null;
+            }
         } else {
-            //            System.out.println("c:"+c);
+            System.out.println("Unknown type:"+o+" "+c);
             return null;
         }
     }
@@ -56,34 +109,37 @@ public class MlszDb {
     private static void dropTable(String tableName) throws SQLException {
         Statement statement = connection.createStatement();
         statement.setQueryTimeout(30);
-            
         statement.executeUpdate("drop table if exists "+tableName);
+        statement.close();
     }        
 
     private static void createTableByJson(String tableName, JSONObject obj, Map<String,String> extraFields) throws SQLException {
-        if( !tablesCreated.contains(tableName)) {
+        if( !tablesCreated.containsKey(tableName)) {
+
+            Map<String,MlszField> fields = new HashMap<>();
+
             Iterator<String> i=obj.keys();
-            String sql="create table "+tableName+"(";
+            int fieldIndex=0;
             while ( i.hasNext() ) {
                 String key=i.next();
-                //                System.out.println("key:"+key);
-                String dbType = getDbTypeByClass(obj.get(key));
+                String dbType = getDbTypeByClass(obj.get(key));                
                 if( dbType != null ) {
-                    sql += key+" "+dbType+",";
+                    fields.put( key, new MlszField(key, dbType, ++fieldIndex));
                 }
             }
             if( extraFields != null ) {
                 for( String key : extraFields.keySet() ) {
-                    sql += key+" "+extraFields.get(key)+",";
+                    fields.put( key, new MlszField( key, extraFields.get(key), ++fieldIndex ));
                 }
             }
-            sql = sql.substring(0, sql.length()-1)+")";
+            MlszTable table = new MlszTable(tableName, fields);            
+            String sql = table.getCreateSql();
+            System.out.println("sql:"+sql);
             Statement statement = connection.createStatement();
             statement.setQueryTimeout(30);
-            
-            //   statement.executeUpdate("drop table if exists "+tableName);
             statement.executeUpdate(sql);
-            tablesCreated.add(tableName);
+            statement.close();
+            tablesCreated.put(tableName, table);
         }
     }
 
@@ -121,34 +177,35 @@ public class MlszDb {
     }
 
     private static int getAktFord(int verseny) {
+        int ret=0;
         try {
             PreparedStatement statement = connection.prepareStatement("select aktford from verseny where verseny_id=? order by szezon_id desc");
             statement.setInt(1, verseny);
             ResultSet rs = statement.executeQuery();
             if( rs.next() ) {
-                return rs.getInt(1);
+                ret=rs.getInt(1);
             }
-            return 0;
+            statement.close();            
         } catch( SQLException e) {
             System.err.println(e);
-            return 0;
-        }      
+        } 
+        return ret;
     }
 
     private static List<Integer> getEvadkods() {
         List<Integer> ret = new ArrayList<>();
         try {
             PreparedStatement statement = connection.prepareStatement("select evadkod from evad");
-            ResultSet rs = statement.executeQuery();
+            ResultSet rs = statement.executeQuery();            
             while( rs.next() ) {
                 ret.add(rs.getInt(1));
             }
+            statement.close();
             return ret;
         } catch( SQLException e) {
             System.err.println(e);
             return null;
-        }      
-
+        }
     }
 
     private static String getString(JSONObject o, String key) {
@@ -192,6 +249,7 @@ public class MlszDb {
             statement.setInt(18, fordulo);
             statement.setInt(19, evad);
             statement.executeUpdate();
+            statement.close();
         }                
     }
 
@@ -216,6 +274,7 @@ public class MlszDb {
                 statement.setString(2, o.getString("evadnev"));
                 statement.setInt(3, o.getInt("akutalis"));
                 statement.executeUpdate();
+                statement.close();
             }
         } else {
             JSONArray jVerseny = json.getJSONArray("verseny");
@@ -248,9 +307,41 @@ public class MlszDb {
                 statement.setInt(21, o.getInt("ervenyes"));
                 statement.setInt(22, o.getInt("aktford"));
                 statement.executeUpdate();
+                statement.close();
                 //            System.out.println(o);
             }
         }
+    }
+
+    private static void getDataToMatchdata(int merkId, int evad) throws SQLException {
+        String url = URL_PREFIX+"getDataToMatchdata.php?item="+merkId+"&evad="+evad;
+        String content = readURL(url);
+        JSONObject json = new JSONObject(content);
+        createTableByJson("merkozesdata", json);
+        String sqlPrefix = "insert into merkozesdata (";
+        String valuesStr = " values (";
+        MlszTable table = tablesCreated.get("merkozesdata");
+        Iterator<String> fields = json.keys();
+        Map<Integer,Object> params = new HashMap<>();
+        int pIndex=0;
+        while( fields.hasNext() ) {
+            String field = fields.next();
+            MlszField mlszField = table.getMlszField(field);
+            if( mlszField != null ) {
+                sqlPrefix+=field+",";
+                valuesStr+="?,";
+                //                params.put(++pIndex, json.get(field));
+                params.put(++pIndex, mlszField.getValue(json));
+            }
+        }
+        String sql = sqlPrefix.substring(0,sqlPrefix.length()-1)+")"+valuesStr.substring(0,valuesStr.length()-1)+")";
+        System.out.println("sql:"+sql);
+        PreparedStatement statement = connection.prepareStatement(sql);
+        for( Integer key : params.keySet() ) {
+            statement.setObject( key, params.get(key));
+        }                            
+        statement.executeUpdate();
+        statement.close();
     }
 
     public static void main(String args[]) {
@@ -258,20 +349,33 @@ public class MlszDb {
         try {
             dropTable("evad");
             dropTable("verseny");
+            System.out.println("Reading evad");
             getDataToFilter( -1, -1);
+            System.out.println("Reading verseny");
             for( Integer evadkod : getEvadkods() ) {
-                System.out.println("evadkod:"+evadkod);
+                //                System.out.println("evadkod:"+evadkod);
                 getDataToFilter( -1, evadkod);                
             }
+            System.out.println("Reading merkozesek");
             dropTable("merkozesek");
             int aktFord = getAktFord(14967);
+            aktFord = 1;
             for( int i=1; i<=aktFord; ++i ) {
                 getDataToMatches(14967,i,15);
             }
+            System.out.println("Reading merkozesdata");
+            dropTable("merkozesdata");
+            getDataToMatchdata(1141642,15);
         } catch( SQLException e ) {
            System.err.println(e);
-
-        }
-    }
-
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException e) {
+                    System.err.println("Cannot close database "+e);
+                }
+            }
+        }    
+    }    
 }
