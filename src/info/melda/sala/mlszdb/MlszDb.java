@@ -74,7 +74,7 @@ public class MlszDb {
             return sql;
         }
 
-	private void executeInsertSql(String tableName, JSONObject json) throws SQLException {
+	private void executeInsertSql(String tableName, JSONObject json, Map<String,Object> fkValues) throws SQLException {
 	    String sqlPrefix = "insert into "+tableName+" (";
 	    String valuesStr = " values (";
 	    Iterator<String> fields = json.keys();
@@ -82,16 +82,23 @@ public class MlszDb {
 	    int pIndex=0;
 	    while( fields.hasNext() ) {
 		String field = fields.next();
-		MlszField mlszField = getMlszField(field);
-		if( mlszField != null ) {
-		    sqlPrefix+=field+",";
-		    valuesStr+="?,";
-		    //                params.put(++pIndex, json.get(field));
-		    params.put(++pIndex, mlszField.getValue(json));
-		}
+                MlszField mlszField = getMlszField(field);
+                if( mlszField != null ) {
+                    sqlPrefix+=field+",";
+                    valuesStr+="?,";
+                    params.put(++pIndex, mlszField.getValue(json));
+                }
 	    }
+            if( fkValues != null ) {
+                for( String key : fkValues.keySet() ) {
+                    sqlPrefix+=key+",";
+                    valuesStr+="?,";
+                    params.put(++pIndex, fkValues.get(key));
+                }
+
+            }
 	    String sql = sqlPrefix.substring(0,sqlPrefix.length()-1)+")"+valuesStr.substring(0,valuesStr.length()-1)+")";
-	    System.out.println("sql:"+sql);
+            //	    System.out.println("sql:"+sql);
 	    PreparedStatement statement = connection.prepareStatement(sql);
 	    for( Integer key : params.keySet() ) {
 		statement.setObject( key, params.get(key));
@@ -99,6 +106,10 @@ public class MlszDb {
 	    statement.executeUpdate();
 	    statement.close();	    
 	}	
+
+	private void executeInsertSql(String tableName, JSONObject json) throws SQLException {
+            executeInsertSql(tableName, json, null);
+        }
     }
 
     private static final int SZERVEZET_MLSZ = 24;
@@ -246,35 +257,18 @@ public class MlszDb {
         fks.put("verseny", "integer");
         fks.put("fordulo", "integer");
         fks.put("evad", "integer");
+
+        Map<String, Object> fkValues = new HashMap<>();
+        fkValues.put("verseny", verseny);
+        fkValues.put("fordulo", fordulo);
+        fkValues.put("evad", evad);
+
         while (iterator.hasNext()) {
             JSONObject o = (JSONObject)iterator.next();
             //            System.out.println("o:"+o);
             createTableByJson("merkozesek", o, fks);
-
-            PreparedStatement statement = connection.prepareStatement("insert into merkozesek (hegkod, lejatszva, vegkod, hcsapat_id, vcsapat_id, merk_id, stadion_nev, stadion_varos, merk_ido, datumteny, hgol, vgol, hazai_csapat, vendeg_csapat, hazai_logo_url, vendeg_logo_url, verseny, fordulo, evad) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-            //            statement.setInt(1, o.getInt("hbuntgol"));
-            //            statement.setInt(2, o.getInt("vbuntgol"));
-            statement.setInt(1, o.getInt("hegkod"));
-            statement.setInt(2, o.getInt("lejatszva"));
-            statement.setInt(3, o.getInt("vegkod"));
-            statement.setInt(4, o.getInt("hcsapat_id"));
-            statement.setInt(5, o.getInt("vcsapat_id"));
-            statement.setInt(6, o.getInt("merk_id"));
-            statement.setString(7, o.getString("stadion_nev"));
-            statement.setString(8, o.getString("stadion_varos"));
-            statement.setString(9, o.getString("merk_ido"));
-            statement.setString(10, ((JSONObject)o.get("datumteny")).getString("date"));
-            statement.setInt(11, o.getInt("hgol"));
-            statement.setInt(12, o.getInt("vgol"));
-            statement.setString(13, o.getString("hazai_csapat"));
-            statement.setString(14, o.getString("vendeg_csapat"));
-            statement.setString(15, getString(o, "hazai_logo_url"));
-            statement.setString(16, getString(o, "vendeg_logo_url"));
-            statement.setInt(17, verseny);
-            statement.setInt(18, fordulo);
-            statement.setInt(19, evad);
-            statement.executeUpdate();
-            statement.close();
+            MlszTable merkozesekTable = tablesCreated.get("merkozesek");
+            merkozesekTable.executeInsertSql("merkozesek", o, fkValues );
         }                
     }
 
