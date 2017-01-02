@@ -74,6 +74,31 @@ public class MlszDb {
             return sql;
         }
 
+	private void executeInsertSql(String tableName, JSONObject json) throws SQLException {
+	    String sqlPrefix = "insert into "+tableName+" (";
+	    String valuesStr = " values (";
+	    Iterator<String> fields = json.keys();
+	    Map<Integer,Object> params = new HashMap<>();
+	    int pIndex=0;
+	    while( fields.hasNext() ) {
+		String field = fields.next();
+		MlszField mlszField = getMlszField(field);
+		if( mlszField != null ) {
+		    sqlPrefix+=field+",";
+		    valuesStr+="?,";
+		    //                params.put(++pIndex, json.get(field));
+		    params.put(++pIndex, mlszField.getValue(json));
+		}
+	    }
+	    String sql = sqlPrefix.substring(0,sqlPrefix.length()-1)+")"+valuesStr.substring(0,valuesStr.length()-1)+")";
+	    System.out.println("sql:"+sql);
+	    PreparedStatement statement = connection.prepareStatement(sql);
+	    for( Integer key : params.keySet() ) {
+		statement.setObject( key, params.get(key));
+	    }                            
+	    statement.executeUpdate();
+	    statement.close();	    
+	}	
     }
 
     private static final int SZERVEZET_MLSZ = 24;
@@ -265,50 +290,22 @@ public class MlszDb {
         Iterator<Object> iterator;
         if( evad == -1 ) {
             JSONArray jEvad = json.getJSONArray("evad");
+	    
             iterator = jEvad.iterator();
             while (iterator.hasNext()) {
                 JSONObject o = (JSONObject)iterator.next();
-                createTableByJson("evad", o);
-                PreparedStatement statement = connection.prepareStatement("insert into evad (evadkod, evadnev, akutalis) values(?,?,?)");
-                statement.setInt(1, o.getInt("evadkod"));
-                statement.setString(2, o.getString("evadnev"));
-                statement.setInt(3, o.getInt("akutalis"));
-                statement.executeUpdate();
-                statement.close();
-            }
+		createTableByJson("evad", o);
+		MlszTable evadTable = tablesCreated.get("evad");
+		evadTable.executeInsertSql("evad", o);
+		}
         } else {
             JSONArray jVerseny = json.getJSONArray("verseny");
-            //        System.out.println(jVerseny);
             iterator = jVerseny.iterator();
             while (iterator.hasNext()) {
                 JSONObject o = (JSONObject)iterator.next();
                 createTableByJson("verseny", o);
-                PreparedStatement statement = connection.prepareStatement("insert into verseny (id,verseny_id, nev, szerv_id, szezon_id,kieg_igazolas_tipus_kod, szint, bajnkupa, szakag, spkod,ferfi_noi, jvszekod, jv_kikuld, versenyrendszer_id, korosztaly,web_nev, lathato, nupi, szam_kezdo, szam_csere,ervenyes,aktford) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-                statement.setInt(1, o.getInt("id"));
-                statement.setInt(2, o.getInt("verseny_id"));
-                statement.setString(3, o.getString("nev"));
-                statement.setInt(4, o.getInt("szerv_id"));
-                statement.setInt(5, o.getInt("szezon_id"));
-                statement.setInt(6, o.getInt("kieg_igazolas_tipus_kod"));
-                statement.setInt(7, o.getInt("szint"));
-                statement.setInt(8, o.getInt("bajnkupa"));
-                statement.setInt(9, o.getInt("szakag"));
-                statement.setInt(10, o.getInt("spkod"));
-                statement.setInt(11, o.getInt("ferfi_noi"));
-                statement.setInt(12, o.getInt("jvszekod"));
-                statement.setInt(13, o.getInt("jv_kikuld"));
-                statement.setInt(14, o.getInt("versenyrendszer_id"));
-                statement.setInt(15, o.getInt("korosztaly"));
-                statement.setString(16, o.getString("web_nev"));
-                statement.setInt(17, o.getInt("lathato"));
-                statement.setInt(18, o.getInt("nupi"));
-                statement.setInt(19, o.getInt("szam_kezdo"));
-                statement.setInt(20, o.getInt("szam_csere"));
-                statement.setInt(21, o.getInt("ervenyes"));
-                statement.setInt(22, o.getInt("aktford"));
-                statement.executeUpdate();
-                statement.close();
-                //            System.out.println(o);
+		MlszTable versenyTable = tablesCreated.get("verseny");
+		versenyTable.executeInsertSql("verseny", o);		
             }
         }
     }
@@ -318,30 +315,8 @@ public class MlszDb {
         String content = readURL(url);
         JSONObject json = new JSONObject(content);
         createTableByJson("merkozesdata", json);
-        String sqlPrefix = "insert into merkozesdata (";
-        String valuesStr = " values (";
         MlszTable table = tablesCreated.get("merkozesdata");
-        Iterator<String> fields = json.keys();
-        Map<Integer,Object> params = new HashMap<>();
-        int pIndex=0;
-        while( fields.hasNext() ) {
-            String field = fields.next();
-            MlszField mlszField = table.getMlszField(field);
-            if( mlszField != null ) {
-                sqlPrefix+=field+",";
-                valuesStr+="?,";
-                //                params.put(++pIndex, json.get(field));
-                params.put(++pIndex, mlszField.getValue(json));
-            }
-        }
-        String sql = sqlPrefix.substring(0,sqlPrefix.length()-1)+")"+valuesStr.substring(0,valuesStr.length()-1)+")";
-        System.out.println("sql:"+sql);
-        PreparedStatement statement = connection.prepareStatement(sql);
-        for( Integer key : params.keySet() ) {
-            statement.setObject( key, params.get(key));
-        }                            
-        statement.executeUpdate();
-        statement.close();
+	table.executeInsertSql("merkozesdata", json);
     }
 
     public static void main(String args[]) {
