@@ -304,6 +304,17 @@ public class MlszDb {
         }
     }
 
+    private static void processJatekosArray(JSONArray array, Map<String,String> fks, Map<String,Object> fkValues) throws SQLException {
+	Iterator<Object> iterator;
+	iterator = array.iterator();
+	while (iterator.hasNext()) {
+	    JSONObject jatekos = (JSONObject)iterator.next();
+	    createTableByJson("merkozesdata_jatekos", jatekos, fks);
+	    MlszTable mjTable = tablesCreated.get("merkozesdata_jatekos");
+	    mjTable.executeInsertSql("merkozesdata_jatekos", jatekos, fkValues );
+	}	
+    }
+    
     private static void getDataToMatchdata(int merkId, int evad) throws SQLException {
         String url = URL_PREFIX+"getDataToMatchdata.php?item="+merkId+"&evad="+evad;
         String content = readURL(url);
@@ -311,20 +322,44 @@ public class MlszDb {
         createTableByJson("merkozesdata", json);
         MlszTable table = tablesCreated.get("merkozesdata");
 	table.executeInsertSql("merkozesdata", json);
+
+        Map<String, String> fks = new HashMap<>();
+        fks.put("merk_id", "integer");
+        fks.put("evad", "integer");
+	fks.put("csapat_id", "integer");
+
+        Map<String, Object> fkValuesHazai = new HashMap<>();
+        fkValuesHazai.put("merk_id", merkId);
+        fkValuesHazai.put("evad", evad);
+        fkValuesHazai.put("csapat_id", json.get("hcsapat_id"));
+
+        Map<String, Object> fkValuesVendeg = new HashMap<>();
+        fkValuesVendeg.put("merk_id", merkId);
+        fkValuesVendeg.put("evad", evad);
+        fkValuesVendeg.put("csapat_id", json.get("vcsapat_id"));
+	
+	JSONArray vendegKezdo = json.getJSONObject("vcsapat").getJSONArray("kezdo");
+	processJatekosArray( vendegKezdo, fks, fkValuesVendeg);
+	JSONArray vendegCsere = json.getJSONObject("vcsapat").getJSONArray("csere");
+	processJatekosArray( vendegCsere, fks, fkValuesVendeg);	
+	JSONArray hazaiKezdo = json.getJSONObject("hcsapat").getJSONArray("kezdo");
+	processJatekosArray( hazaiKezdo, fks, fkValuesHazai);
+	JSONArray hazaiCsere = json.getJSONObject("hcsapat").getJSONArray("csere");
+	processJatekosArray( hazaiCsere, fks, fkValuesHazai);		
     }
 
     public static void main(String args[]) {
         connection = readDb();
         try {
-            dropTable("evad");
-            dropTable("verseny");
-            System.out.println("Reading evad");
-            getDataToFilter( -1, -1);
-            System.out.println("Reading verseny");
+	    dropTable("evad");
+	    System.out.println("Reading evad");
+	    getDataToFilter( -1, -1);	    
+	    dropTable("verseny");
+	    System.out.println("Reading verseny");
             for( Integer evadkod : getEvadkods() ) {
                 //                System.out.println("evadkod:"+evadkod);
                 getDataToFilter( -1, evadkod);                
-            }
+	    }
             System.out.println("Reading merkozesek");
             dropTable("merkozesek");
             int aktFord = getAktFord(14967);
@@ -334,6 +369,7 @@ public class MlszDb {
             }
             System.out.println("Reading merkozesdata");
             dropTable("merkozesdata");
+            dropTable("merkozesdata_jatekos");	    
             getDataToMatchdata(1141642,15);
         } catch( SQLException e ) {
            System.err.println(e);
