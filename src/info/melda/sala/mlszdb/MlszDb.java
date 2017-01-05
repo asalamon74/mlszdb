@@ -113,6 +113,7 @@ public class MlszDb {
     }
 
     private static final int SZERVEZET_MLSZ = 24;
+    private static final int CSAPAT_ZTE = 138939;
     private static final String URL_PREFIX = "http://www.mlsz.hu/wp-content/plugins/mlszDatabank/interfaces/";
     private static Map<String,MlszTable> tablesCreated = new HashMap<>();
     private static Connection connection;
@@ -170,7 +171,7 @@ public class MlszDb {
             }
             MlszTable table = new MlszTable(tableName, fields);            
             String sql = table.getCreateSql();
-            System.out.println("sql:"+sql);
+	    //            System.out.println("sql:"+sql);
             Statement statement = connection.createStatement();
             statement.setQueryTimeout(30);
             statement.executeUpdate(sql);
@@ -228,10 +229,17 @@ public class MlszDb {
         return ret;
     }
 
-    private static List<Integer> getEvadkods() {
+    private static List<Integer> getDbList(String sql, Map<Integer,Object> params) {
         List<Integer> ret = new ArrayList<>();
         try {
-            PreparedStatement statement = connection.prepareStatement("select evadkod from evad");
+            PreparedStatement statement = connection.prepareStatement(sql);
+            //	    System.out.println("params:"+params);
+	    if( params != null ) {
+		for( int idx : params.keySet() ) {
+		    System.out.println("idx:"+idx);
+		    statement.setObject(idx, params.get(idx));
+		}
+	    }
             ResultSet rs = statement.executeQuery();            
             while( rs.next() ) {
                 ret.add(rs.getInt(1));
@@ -244,6 +252,22 @@ public class MlszDb {
         }
     }
 
+    private static List<Integer> getDbList(String sql) {
+	return getDbList(sql, null);
+    }
+
+    private static List<Integer> getEvadkods() {
+        return getDbList("select evadkod from evad");
+    }
+
+    private static List<Integer> getMerkIds(int verseny, int evad, int csapatId) {
+	Map<Integer, Object> params = new HashMap<>();
+	params.put( 1, verseny);
+	params.put( 2, evad);
+	params.put( 3, csapatId);
+        return getDbList("select merk_id from merkozesek where verseny_id=? and evad=? and ? in (hcsapat_id,vcsapat_id)", params);
+    }
+
     private static String getString(JSONObject o, String key) {
         return o.isNull("key") ? null : o.getString(key);
     }
@@ -254,12 +278,12 @@ public class MlszDb {
         JSONArray list = json.getJSONArray("list");
         Iterator<Object> iterator = list.iterator();
         Map<String, String> fks = new HashMap<>();
-        fks.put("verseny", "integer");
+        fks.put("verseny_id", "integer");
         fks.put("fordulo", "integer");
         fks.put("evad", "integer");
 
         Map<String, Object> fkValues = new HashMap<>();
-        fkValues.put("verseny", verseny);
+        fkValues.put("verseny_id", verseny);
         fkValues.put("fordulo", fordulo);
         fkValues.put("evad", evad);
 
@@ -357,20 +381,21 @@ public class MlszDb {
 	    dropTable("verseny");
 	    System.out.println("Reading verseny");
             for( Integer evadkod : getEvadkods() ) {
-                //                System.out.println("evadkod:"+evadkod);
                 getDataToFilter( -1, evadkod);                
 	    }
-            System.out.println("Reading merkozesek");
+	    System.out.println("Reading merkozesek");
             dropTable("merkozesek");
             int aktFord = getAktFord(14967);
-            aktFord = 1;
+            aktFord = 2;
             for( int i=1; i<=aktFord; ++i ) {
                 getDataToMatches(14967,i,15);
             }
             System.out.println("Reading merkozesdata");
             dropTable("merkozesdata");
-            dropTable("merkozesdata_jatekos");	    
-            getDataToMatchdata(1141642,15);
+            dropTable("merkozesdata_jatekos");
+	    for( Integer merkId : getMerkIds(14967,15, CSAPAT_ZTE) ) {
+		getDataToMatchdata(merkId,15);
+	    }
         } catch( SQLException e ) {
            System.err.println(e);
         } finally {
