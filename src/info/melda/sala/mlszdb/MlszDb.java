@@ -112,7 +112,7 @@ public class MlszDb {
         }
     }
 
-    private static final int SZERVEZET_MLSZ = 24;
+    private static final int SZERVEZET_MLSZ = 0;
     private static final int CSAPAT_ZTE = 138939;
     private static final String URL_PREFIX = "http://www.mlsz.hu/wp-content/plugins/mlszDatabank/interfaces/";
     private static Map<String,MlszTable> tablesCreated = new HashMap<>();
@@ -236,7 +236,6 @@ public class MlszDb {
             //	    System.out.println("params:"+params);
 	    if( params != null ) {
 		for( int idx : params.keySet() ) {
-		    System.out.println("idx:"+idx);
 		    statement.setObject(idx, params.get(idx));
 		}
 	    }
@@ -336,6 +335,22 @@ public class MlszDb {
 	    createTableByJson("merkozesdata_jatekos", jatekos, fks);
 	    MlszTable mjTable = tablesCreated.get("merkozesdata_jatekos");
 	    mjTable.executeInsertSql("merkozesdata_jatekos", jatekos, fkValues );
+
+	    Map<String, String> fkEsemeny = new HashMap<>();
+	    fkEsemeny.put("merk_id", fks.get("merk_id"));
+	    fkEsemeny.put("jnkod", "integer");
+	    Map<String, Object> fkEsemenyValues = new HashMap<>();
+	    fkEsemenyValues.put("merk_id", fkValues.get("merk_id"));
+	    fkEsemenyValues.put("jnkod", jatekos.get("jnkod"));
+	    
+	    JSONArray esemenyArray = jatekos.getJSONArray("esemeny");
+	    Iterator<Object> eIterator = esemenyArray.iterator();
+	    while (eIterator.hasNext()) {
+		JSONObject esemeny = (JSONObject)eIterator.next();
+		createTableByJson("merkozesdata_jatekos_esemeny", esemeny, fkEsemeny);
+		MlszTable mjeTable = tablesCreated.get("merkozesdata_jatekos_esemeny");
+		mjeTable.executeInsertSql("merkozesdata_jatekos_esemeny", esemeny, fkEsemenyValues );
+	    }
 	}	
     }
     
@@ -377,7 +392,7 @@ public class MlszDb {
         try {
 	    dropTable("evad");
 	    System.out.println("Reading evad");
-	    getDataToFilter( -1, -1);	    
+	    getDataToFilter( -1, -1);
 	    dropTable("verseny");
 	    System.out.println("Reading verseny");
             for( Integer evadkod : getEvadkods() ) {
@@ -389,10 +404,11 @@ public class MlszDb {
             aktFord = 2;
             for( int i=1; i<=aktFord; ++i ) {
                 getDataToMatches(14967,i,15);
-            }
+	    }
             System.out.println("Reading merkozesdata");
             dropTable("merkozesdata");
             dropTable("merkozesdata_jatekos");
+            dropTable("merkozesdata_jatekos_esemeny");
 	    for( Integer merkId : getMerkIds(14967,15, CSAPAT_ZTE) ) {
 		getDataToMatchdata(merkId,15);
 	    }
