@@ -171,7 +171,7 @@ public class MlszDb {
             }
             MlszTable table = new MlszTable(tableName, fields);            
             String sql = table.getCreateSql();
-	    //            System.out.println("sql:"+sql);
+	    //	    System.out.println("sql:"+sql);
             Statement statement = connection.createStatement();
             statement.setQueryTimeout(30);
             statement.executeUpdate(sql);
@@ -295,19 +295,19 @@ public class MlszDb {
         }                
     }
 
-    private static void getDataToFilter(int verseny,int evad) throws SQLException {
+    private static void getDataToFilter(int evad) throws SQLException {
         String url = URL_PREFIX+"getDataToFilter.php";
         if( evad == -1 ) {
-            url += "?verseny="+verseny+"&szezon_id="+evad+"&evad="+evad;
+            url += "?szezon_id="+evad+"&evad="+evad;
         } else {
-            url += "?verseny="+verseny+"&szervezet="+SZERVEZET_MLSZ+"&szezon_id="+evad+"&evad="+evad;        
+            url += "?szervezet="+SZERVEZET_MLSZ+"&szezon_id="+evad+"&evad="+evad;        
         }
+	//	System.out.println("url:"+url);
         String content = readURL(url);
         JSONObject json = new JSONObject(content);
         Iterator<Object> iterator;
         if( evad == -1 ) {
-            JSONArray jEvad = json.getJSONArray("evad");
-	    
+            JSONArray jEvad = json.getJSONArray("evad");	    
             iterator = jEvad.iterator();
             while (iterator.hasNext()) {
                 JSONObject o = (JSONObject)iterator.next();
@@ -317,9 +317,11 @@ public class MlszDb {
 		}
         } else {
             JSONArray jVerseny = json.getJSONArray("verseny");
+	    //	    System.out.println("jVerseny:"+jVerseny);	   
             iterator = jVerseny.iterator();
-            while (iterator.hasNext()) {
+            while (iterator.hasNext()) {		
                 JSONObject o = (JSONObject)iterator.next();
+		//		System.out.println("o:"+o);
                 createTableByJson("verseny", o);
 		MlszTable versenyTable = tablesCreated.get("verseny");
 		versenyTable.executeInsertSql("verseny", o);		
@@ -392,16 +394,16 @@ public class MlszDb {
         try {
 	    dropTable("evad");
 	    System.out.println("Reading evad");
-	    getDataToFilter( -1, -1);
+	    getDataToFilter( -1);
 	    dropTable("verseny");
 	    System.out.println("Reading verseny");
             for( Integer evadkod : getEvadkods() ) {
-                getDataToFilter( -1, evadkod);                
+                getDataToFilter( evadkod);                
 	    }
 	    System.out.println("Reading merkozesek");
             dropTable("merkozesek");
             int aktFord = getAktFord(14967);
-            aktFord = 2;
+	    //aktFord = 2;
             for( int i=1; i<=aktFord; ++i ) {
                 getDataToMatches(14967,i,15);
 	    }
