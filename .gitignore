@@ -1,4 +1,4 @@
 /build
 /dist
 *~
-/mlszdb.db
+/mlszdb*.db
