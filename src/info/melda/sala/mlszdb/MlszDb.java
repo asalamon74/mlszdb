@@ -118,6 +118,14 @@ public class MlszDb {
     private static Map<String,MlszTable> tablesCreated = new HashMap<>();
     private static Connection connection;
 
+    private static void sleep() {
+	try {
+	    Thread.sleep(1000);
+	} catch(InterruptedException ex) {
+	    Thread.currentThread().interrupt();
+	}
+    }   
+
     private static String getDbTypeByClass(Object o) {
         Class c = o.getClass();
         if( c == Integer.class || c == Boolean.class) {
@@ -213,6 +221,10 @@ public class MlszDb {
         }
     }
 
+    private static List<Integer> getVersenyIdsNB2() {
+        return getDbList("select verseny_id from verseny where szint=2 and szam_kezdo=11 and ferfi_noi=1 and verseny_id not in (15,16, 129,130)");	
+    }
+
     private static int getAktFord(int verseny) {
         int ret=0;
         try {
@@ -228,6 +240,30 @@ public class MlszDb {
         } 
         return ret;
     }
+
+    private static Object getDbValue(String sql, Map<Integer,Object> params) {
+        Object ret=null;
+        try {
+            PreparedStatement statement = connection.prepareStatement(sql);
+	    if( params != null ) {
+		for( int idx : params.keySet() ) {
+		    statement.setObject(idx, params.get(idx));
+		}
+	    }
+            ResultSet rs = statement.executeQuery();
+            if( rs.next() ) {
+                ret=rs.getObject(1);
+            }
+            statement.close();            
+        } catch( SQLException e) {
+            System.err.println(e);
+        } 
+        return ret;
+    }
+
+    private static Object getDbValue(String sql) {
+	return getDbValue(sql, null);
+    }    
 
     private static List<Integer> getDbList(String sql, Map<Integer,Object> params) {
         List<Integer> ret = new ArrayList<>();
@@ -258,6 +294,10 @@ public class MlszDb {
     private static List<Integer> getEvadkods() {
         return getDbList("select evadkod from evad");
     }
+
+    private static List<Integer> getCsapatIds(String name) {	
+        return getDbList("select distinct hcsapat_id csapat_id from merkozesek where hazai_csapat like'%"+name+"%' union select distinct vcsapat_id from merkozesek where vendeg_csapat like'%"+name+"%'");
+    }    
 
     private static List<Integer> getMerkIds(int verseny, int evad, int csapatId) {
 	Map<Integer, Object> params = new HashMap<>();
@@ -358,6 +398,7 @@ public class MlszDb {
     
     private static void getDataToMatchdata(int merkId, int evad) throws SQLException {
         String url = URL_PREFIX+"getDataToMatchdata.php?item="+merkId+"&evad="+evad;
+	System.out.println("url:"+url);
         String content = readURL(url);
         JSONObject json = new JSONObject(content);
         createTableByJson("merkozesdata", json);
@@ -402,23 +443,34 @@ public class MlszDb {
 	    }
 	    System.out.println("Reading merkozesek");
             dropTable("merkozesek");
-            int aktFord = getAktFord(14967);
-	    //aktFord = 2;
-            for( int i=1; i<=aktFord; ++i ) {
-                getDataToMatches(14967,i,15);
+	    dropTable("merkozesdata");
+	    dropTable("merkozesdata_jatekos");
+	    dropTable("merkozesdata_jatekos_esemeny");	    
+	    for (Integer versenyId : getVersenyIdsNB2() ) {
+		System.out.println("reading "+versenyId);
+		int evadId = (Integer)getDbValue("select szezon_id from verseny where verseny_id="+versenyId);
+		System.out.println("evadId:"+evadId);
+		int aktFord = getAktFord(versenyId);
+		System.out.println("aktFord:"+aktFord);
+		//aktFord = 2;
+		for( int i=1; i<=aktFord; ++i ) {
+		    getDataToMatches(versenyId,i,evadId);
+		}
+		System.out.println("Reading merkozesdata");
+		for (Integer csapatId : getCsapatIds("ZTE") ) {
+		    System.out.println("csapatId:"+csapatId);
+		    for( Integer merkId : getMerkIds(versenyId, evadId, csapatId) ) {
+			System.out.println("reading merkId "+merkId);
+			getDataToMatchdata(merkId, evadId);
+			sleep();
+		    }
+		}
 	    }
-            System.out.println("Reading merkozesdata");
-            dropTable("merkozesdata");
-            dropTable("merkozesdata_jatekos");
-            dropTable("merkozesdata_jatekos_esemeny");
-	    for( Integer merkId : getMerkIds(14967,15, CSAPAT_ZTE) ) {
-		getDataToMatchdata(merkId,15);
-	    }
-        } catch( SQLException e ) {
-           System.err.println(e);
-        } finally {
-            if (connection != null) {
-                try {
+	} catch( SQLException e ) {
+	    System.err.println(e);
+	} finally {
+	    if (connection != null) {
+		try {
                     connection.close();
                 } catch (SQLException e) {
                     System.err.println("Cannot close database "+e);
@@ -427,3 +479,24 @@ public class MlszDb {
         }    
     }    
 }
+
+/*
+
+select v.nev,  evadnev, mdj.nev, mez, count(*) mecssszam
+from merkozesek m join merkozesdata md on m.merk_id=md.merk_id join merkozesdata_jatekos mdj on m.merk_id=mdj.merk_id join verseny v on m.verseny_id=v.verseny_id
+where ((m.hazai_csapat like '%ZTE%' and m.hcsapat_id=mdj.csapat_id) or (m.vendeg_csapat like '%ZTE%' and m.vcsapat_id=mdj.csapat_id))
+and (kezdcsere=0 or trim(csereido)!='')
+and m.evad>=11
+group by m.verseny_id, mdj.nev, mez
+order by m.verseny_id, mdj.nev, count(*) desc;
+
+*/
+
+/* create view mezszam
+as
+select v.nev,  evadnev, mdj.nev, mez, count(*) mecssszam
+from merkozesek m join merkozesdata md on m.merk_id=md.merk_id join merkozesdata_jatekos mdj on m.merk_id=mdj.merk_id join verseny v on m.verseny_id=v.verseny_id
+where csapat_id in (138939, 120963)
+and (kezdcsere=0 or csereido!='')
+group by m.verseny_id, mdj.nev, mez
+order by m.verseny_id, mdj.nev, count(*) desc */
