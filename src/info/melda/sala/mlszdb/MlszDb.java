@@ -221,8 +221,8 @@ public class MlszDb {
         }
     }
 
-    private static List<Integer> getVersenyIdsNB2() {
-        return getDbList("select verseny_id from verseny where szint=2 and szam_kezdo=11 and ferfi_noi=1 and verseny_id not in (15,16, 129,130)");	
+    private static List<Integer> getVersenyIds() {
+        return getDbList("select verseny_id from verseny where szint in (1,2) and szam_kezdo=11 and ferfi_noi=1 and spkod=1 and verseny_id not in (15,16, 129,130)");	
     }
 
     private static int getAktFord(int verseny) {
@@ -446,7 +446,7 @@ public class MlszDb {
 	    dropTable("merkozesdata");
 	    dropTable("merkozesdata_jatekos");
 	    dropTable("merkozesdata_jatekos_esemeny");	    
-	    for (Integer versenyId : getVersenyIdsNB2() ) {
+	    for (Integer versenyId : getVersenyIds() ) {
 		System.out.println("reading "+versenyId);
 		int evadId = (Integer)getDbValue("select szezon_id from verseny where verseny_id="+versenyId);
 		System.out.println("evadId:"+evadId);
